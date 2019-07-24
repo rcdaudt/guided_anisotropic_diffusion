@@ -12,60 +12,49 @@ def g(x, K=5):
 
 
 def c(I, K =5):
-    cv = g(torch.mean(I[:,:,1:,1:-1] - I[:,:,:-1,1:-1], 1), K)
-    ch = g(torch.mean(I[:,:,1:-1,1:] - I[:,:,1:-1,:-1], 1), K)
+    cv = g(torch.unsqueeze(torch.mean(I[:,:,1:,:] - I[:,:,:-1,:], 1), 1), K)
+    ch = g(torch.unsqueeze(torch.mean(I[:,:,:,1:] - I[:,:,:,:-1], 1), 1), K)
     
     return cv, ch
         
     
-def c_pair(I1, I2, K = 5):
-    cv1, ch1 = c(I1, K)
-    cv2, ch2 = c(I2, K)
+def diffuse_step(cv, ch, I, l=0.24):
+    dv = I[:,:,1:,:] - I[:,:,:-1,:]
+    dh = I[:,:,:,1:] - I[:,:,:,:-1]
     
-    cv = torch.min(cv1, cv2)
-    ch = torch.min(ch1, ch2)
+    tv = l * cv * dv # vertical transmissions
+    I[:,:,1:,:] -= tv
+    I[:,:,:-1,:] += tv
+    del(dv,tv)
     
-    return cv, ch
-
-
+    th = l * ch * dh # horizontal transmissions
+    I[:,:,:,1:] -= th
+    I[:,:,:,:-1] += th
+    del(dh,th)
+    
+    return I
 
 
 def anisotropic_diffusion(I1, I2, I, N=500, l=0.24, K=5, is_log=True, verbose=False):
     if is_log:
         I = torch.exp(I)
-
     
     with torch.no_grad():
         for t in range(N): 
             if verbose:
                 print('Iteration {}'.format(t))
-                   
 
             cv1, ch1 = c(I1, K=K)
-
-            dv = I1[:,:,1:,1:-1] - I1[:,:,:-1,1:-1]
-            dh = I1[:,:,1:-1,1:] - I1[:,:,1:-1,:-1]
-            for channel in range(I1.size(1)):
-                I1[:,channel,1:-1,1:-1] += l * (cv1[:,1:,:]*dv[:,channel,1:,:] - cv1[:,:-1,:]*dv[:,channel,:-1,:] + ch1[:,:,1:]*dh[:,channel,:,1:] - ch1[:,:,:-1]*dh[:,channel,:,:-1]) 
-            del(dv,dh)
+            I1 = diffuse_step(cv1, ch1, I1, l=l)
             
             cv2, ch2 = c(I2, K=K)
-
-            dv = I2[:,:,1:,1:-1] - I2[:,:,:-1,1:-1]
-            dh = I2[:,:,1:-1,1:] - I2[:,:,1:-1,:-1]
-            for channel in range(I2.size(1)):
-                I2[:,channel,1:-1,1:-1] += l * (cv2[:,1:,:]*dv[:,channel,1:,:] - cv2[:,:-1,:]*dv[:,channel,:-1,:] + ch2[:,:,1:]*dh[:,channel,:,1:] - ch2[:,:,:-1]*dh[:,channel,:,:-1]) 
-            del(dv,dh)
+            I2 = diffuse_step(cv2, ch2, I2, l=l)
             
             cv = torch.min(cv1, cv2)
             ch = torch.min(ch1, ch2)
             del(cv1, ch1, cv2, ch2)
+            I = diffuse_step(cv, ch, I, l=l)
 
-            dv = I[:,:,1:,1:-1] - I[:,:,:-1,1:-1]
-            dh = I[:,:,1:-1,1:] - I[:,:,1:-1,:-1]
-            for channel in range(I.size(1)):
-                I[:,channel,1:-1,1:-1] += l * (cv[:,1:,:]*dv[:,channel,1:,:] - cv[:,:-1,:]*dv[:,channel,:-1,:] + ch[:,:,1:]*dh[:,channel,:,1:] - ch[:,:,:-1]*dh[:,channel,:,:-1]) 
-            del(dv,dh)
-            
+            del(cv,ch)
         
     return I
