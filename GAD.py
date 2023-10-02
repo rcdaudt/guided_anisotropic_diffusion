@@ -6,31 +6,30 @@
 
 import torch
 
-
-def g(x, K=5):
+@torch.jit.script
+def g(x, K:float = 5.):
     return 1.0 / (1.0 + (torch.abs((x*x))/(K*K)))
 
-
-def c(I, K =5):
-    cv = g(torch.unsqueeze(torch.mean(I[:,:,1:,:] - I[:,:,:-1,:], 1), 1), K)
-    ch = g(torch.unsqueeze(torch.mean(I[:,:,:,1:] - I[:,:,:,:-1], 1), 1), K)
+@torch.jit.script
+def c(I, K:float = 5.):
+    cv = g(torch.mean(torch.abs(I[:,:,1:,:] - I[:,:,:-1,:]), 1, keepdim=True), K)
+    ch = g(torch.mean(torch.abs(I[:,:,:,1:] - I[:,:,:,:-1]), 1, keepdim=True), K)
     
     return cv, ch
-        
-    
-def diffuse_step(cv, ch, I, l=0.24):
+
+
+@torch.jit.script
+def diffuse_step(cv, ch, I, l:float =0.24):
     dv = I[:,:,1:,:] - I[:,:,:-1,:]
     dh = I[:,:,:,1:] - I[:,:,:,:-1]
     
     tv = l * cv * dv # vertical transmissions
     I[:,:,1:,:] -= tv
     I[:,:,:-1,:] += tv
-    del(dv,tv)
     
     th = l * ch * dh # horizontal transmissions
     I[:,:,:,1:] -= th
     I[:,:,:,:-1] += th
-    del(dh,th)
     
     return I
 
